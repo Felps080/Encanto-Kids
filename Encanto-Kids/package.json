@@ -1,0 +1,7 @@
+{
+  "name": "encanto-kids",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Encanto Kids - loja com Checkout Pro do Mercado Pago",
+  "engines": { "node": ">=18" }
+}

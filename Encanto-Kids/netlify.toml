@@ -1,0 +1,37 @@
+# Encanto Kids — configuração da Netlify
+# Estrutura esperada do repositório:
+#   netlify.toml
+#   package.json
+#   public/index.html        <- a loja (site público)
+#   public/products.json     <- catálogo com preços (única cópia)
+#   netlify/functions/       <- back-end (criar-pagamento, webhook)
+
+[build]
+  # Só a pasta "public" vai ao ar. O código das functions nunca fica exposto.
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  # Permite que as functions leiam o catálogo e validem preços no servidor
+  included_files = ["public/products.json"]
+
+# URLs amigáveis: /api/criar-pagamento -> /.netlify/functions/criar-pagamento
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# Cabeçalhos de segurança básicos
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Catálogo atualiza em poucos minutos quando você mudar um preço
+[[headers]]
+  for = "/products.json"
+  [headers.values]
+    Cache-Control = "public, max-age=300"

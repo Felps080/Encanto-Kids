@@ -1,0 +1,29 @@
+{
+  "currency": "BRL",
+  "shipping": {
+    "free": true,
+    "price_cents": 0,
+    "delivery_business_days": 8
+  },
+  "products": [
+    {
+      "id": "drone-chabvrio",
+      "name": "Drone CHABVRIO — 4 hélices em material EPP",
+      "price_cents": 17290,
+      "active": true
+    },
+    {
+      "id": "pista-dinossauros-217",
+      "name": "Pista de Carrinho com Dinossauros — 217 peças",
+      "price_cents": 16890,
+      "active": true
+    },
+    {
+      "id": "barraca-3em1",
+      "name": "Barraca 3 em 1 com Túnel e Piscina de Bolinhas",
+      "price_cents": null,
+      "variants": [],
+      "active": false
+    }
+  ]
+}
