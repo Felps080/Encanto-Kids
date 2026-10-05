@@ -8,7 +8,7 @@
 
 [build]
   # Só a pasta "public" vai ao ar. O código das functions nunca fica exposto.
-  publish = "public"
+  publish = "."
   functions = "netlify/functions"
 
 [functions]
