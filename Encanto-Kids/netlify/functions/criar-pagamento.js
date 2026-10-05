@@ -22,7 +22,7 @@ exports.handler = async (event) => {
     });
   }
 
-  // Access Token
+  // Access Token do Mercado Pago
   const accessToken = process.env.MP_ACCESS_TOKEN;
 
   if (!accessToken || !accessToken.trim()) {
@@ -51,6 +51,10 @@ exports.handler = async (event) => {
 
     const productId = String(body.product_id || '').trim();
 
+    const variantId = body.variant_id
+      ? String(body.variant_id).trim()
+      : '';
+
     const quantityNumber = Number(body.quantity || 1);
 
     const quantity = Number.isFinite(quantityNumber)
@@ -63,12 +67,14 @@ exports.handler = async (event) => {
       });
     }
 
-    // Procurar produto no catálogo
+    // =========================================================
+    // PROCURAR PRODUTO
+    // =========================================================
+
     const product = catalog.products.find(
       (item) =>
         item.id === productId &&
-        item.active === true &&
-        Number.isFinite(Number(item.price_cents))
+        item.active === true
     );
 
     if (!product) {
@@ -79,15 +85,75 @@ exports.handler = async (event) => {
       });
     }
 
-    const unitPrice = Number(product.price_cents) / 100;
+    // =========================================================
+    // IDENTIFICAR VARIAÇÃO
+    // =========================================================
 
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+    let selectedVariant = null;
+    let unitPriceCents = null;
+
+    // Produto possui variações
+    if (Array.isArray(product.variants) && product.variants.length > 0) {
+
+      if (!variantId) {
+        return response(400, {
+          error: 'É necessário selecionar uma variação do produto.'
+        });
+      }
+
+      selectedVariant = product.variants.find(
+        (variant) =>
+          variant.id === variantId &&
+          Number.isFinite(Number(variant.price_cents))
+      );
+
+      if (!selectedVariant) {
+        console.error(
+          'Variação não encontrada:',
+          productId,
+          variantId
+        );
+
+        return response(400, {
+          error: 'Variação inválida ou indisponível.'
+        });
+      }
+
+      unitPriceCents = Number(selectedVariant.price_cents);
+
+    } else {
+
+      // Produto sem variações
+      if (!Number.isFinite(Number(product.price_cents))) {
+        console.error(
+          'Produto sem preço válido:',
+          productId
+        );
+
+        return response(400, {
+          error: 'Preço do produto inválido.'
+        });
+      }
+
+      unitPriceCents = Number(product.price_cents);
+    }
+
+    // =========================================================
+    // VALIDAR PREÇO
+    // =========================================================
+
+    if (!Number.isFinite(unitPriceCents) || unitPriceCents <= 0) {
       return response(400, {
         error: 'Preço do produto inválido.'
       });
     }
 
-    // Identificar endereço da loja
+    const unitPrice = unitPriceCents / 100;
+
+    // =========================================================
+    // IDENTIFICAR ENDEREÇO DA LOJA
+    // =========================================================
+
     const host = event.headers?.host;
 
     if (!host) {
@@ -103,19 +169,54 @@ exports.handler = async (event) => {
 
     const baseUrl = `${protocol}://${host}`;
 
-    // Criar preferência
+    // =========================================================
+    // NOME FINAL DO PRODUTO
+    // =========================================================
+
+    const itemTitle = selectedVariant
+      ? `${product.name} — ${selectedVariant.name}`
+      : product.name;
+
+    // =========================================================
+    // REFERÊNCIA EXTERNA
+    // =========================================================
+
+    const externalReferenceParts = [
+      'encanto',
+      product.id
+    ];
+
+    if (selectedVariant) {
+      externalReferenceParts.push(selectedVariant.id);
+    }
+
+    externalReferenceParts.push(Date.now());
+
+    const externalReference =
+      externalReferenceParts.join('-');
+
+    // =========================================================
+    // CRIAR PREFERÊNCIA DO MERCADO PAGO
+    // =========================================================
+
     const preference = {
       items: [
         {
-          id: String(product.id),
-          title: String(product.name),
+          id: selectedVariant
+            ? `${product.id}-${selectedVariant.id}`
+            : String(product.id),
+
+          title: String(itemTitle),
+
           quantity,
+
           currency_id: 'BRL',
+
           unit_price: unitPrice
         }
       ],
 
-      external_reference: `encanto-${product.id}-${Date.now()}`,
+      external_reference: externalReference,
 
       back_urls: {
         success: `${baseUrl}/?pagamento=sucesso`,
@@ -128,20 +229,31 @@ exports.handler = async (event) => {
       notification_url: `${baseUrl}/api/webhook`
     };
 
-    // Frete grátis
+    // =========================================================
+    // FRETE GRÁTIS
+    // =========================================================
+
     if (catalog.shipping?.free === true) {
       preference.shipments = {
         cost: 0
       };
     }
 
-    console.log('Enviando para Mercado Pago:', {
-      product: product.id,
-      quantity,
-      price: unitPrice
-    });
+    console.log(
+      'Enviando para Mercado Pago:',
+      {
+        product: product.id,
+        variant: selectedVariant?.id || 'única',
+        quantity,
+        price_cents: unitPriceCents,
+        price: unitPrice
+      }
+    );
 
-    // Chamada à API do Mercado Pago
+    // =========================================================
+    // CHAMADA À API DO MERCADO PAGO
+    // =========================================================
+
     const mpResponse = await fetch(
       'https://api.mercadopago.com/checkout/preferences',
       {
@@ -170,9 +282,15 @@ exports.handler = async (event) => {
       };
     }
 
-    console.log('Mercado Pago status:', mpResponse.status);
+    console.log(
+      'Mercado Pago status:',
+      mpResponse.status
+    );
 
-    // Erro retornado pelo Mercado Pago
+    // =========================================================
+    // ERRO DO MERCADO PAGO
+    // =========================================================
+
     if (!mpResponse.ok) {
       console.error(
         'ERRO MERCADO PAGO:',
@@ -181,8 +299,11 @@ exports.handler = async (event) => {
       );
 
       return response(502, {
-        error: 'O Mercado Pago recusou a criação do pagamento.',
+        error:
+          'O Mercado Pago recusou a criação do pagamento.',
+
         status: mpResponse.status,
+
         detalhes:
           mpData?.message ||
           mpData?.error ||
@@ -190,31 +311,59 @@ exports.handler = async (event) => {
       });
     }
 
-    // Verificar link de pagamento
+    // =========================================================
+    // VERIFICAR LINK DE PAGAMENTO
+    // =========================================================
+
     if (!mpData.init_point) {
-      console.error('init_point não retornado:', mpData);
+      console.error(
+        'init_point não retornado:',
+        mpData
+      );
 
       return response(502, {
-        error: 'O Mercado Pago não retornou o link de pagamento.'
+        error:
+          'O Mercado Pago não retornou o link de pagamento.'
       });
     }
 
-    console.log('CHECKOUT CRIADO COM SUCESSO');
+    console.log(
+      'CHECKOUT CRIADO COM SUCESSO'
+    );
+
+    // =========================================================
+    // RESPOSTA PARA O SITE
+    // =========================================================
 
     return response(200, {
       init_point: mpData.init_point,
-      preference_id: mpData.id
+
+      preference_id: mpData.id,
+
+      product_id: product.id,
+
+      variant_id:
+        selectedVariant?.id || null,
+
+      price_cents: unitPriceCents,
+
+      quantity
     });
 
   } catch (error) {
+
     console.error(
       'ERRO INTERNO CRIAR PAGAMENTO:',
       error
     );
 
     return response(500, {
-      error: 'Erro interno ao criar o pagamento.',
-      detalhes: error?.message || String(error)
+      error:
+        'Erro interno ao criar o pagamento.',
+
+      detalhes:
+        error?.message ||
+        String(error)
     });
   }
 };
