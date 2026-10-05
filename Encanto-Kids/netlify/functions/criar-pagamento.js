@@ -1,44 +1,14 @@
-const fs = require('node:fs');
-const path = require('node:path');
-
-const JSON_HEADERS = {
-  'Content-Type': 'application/json',
-  'Cache-Control': 'no-store'
-};
+const catalog = require('../../public/products.json');
 
 function response(statusCode, data) {
   return {
     statusCode,
-    headers: JSON_HEADERS,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store'
+    },
     body: JSON.stringify(data)
   };
-}
-
-function getCatalog() {
-  // O netlify.toml inclui public/products.json no bundle da Function.
-  const possiblePaths = [
-    path.join(process.cwd(), 'public', 'products.json'),
-    path.join(__dirname, '../../public/products.json'),
-    path.join(__dirname, '../public/products.json')
-  ];
-
-  for (const file of possiblePaths) {
-    try {
-      if (fs.existsSync(file)) {
-        return JSON.parse(fs.readFileSync(file, 'utf8'));
-      }
-   } catch (error) {
-  console.error('ERRO INTERNO:', error);
-
-  return response(500, {
-    error: 'Erro interno ao criar o pagamento.',
-    detalhes: String(error?.message || error),
-    tipo: error?.name || 'UnknownError'
-  });
-}
-  }
-
-  throw new Error('Arquivo public/products.json não foi encontrado.');
 }
 
 exports.handler = async (event) => {
@@ -52,52 +22,39 @@ exports.handler = async (event) => {
     });
   }
 
-  // Verifica o Access Token
+  // Access Token
   const accessToken = process.env.MP_ACCESS_TOKEN;
 
   if (!accessToken || !accessToken.trim()) {
     console.error('MP_ACCESS_TOKEN não configurado.');
-    
+
     return response(500, {
-      error: 'Mercado Pago não configurado na Netlify. Adicione MP_ACCESS_TOKEN nas variáveis de ambiente.'
+      error: 'Mercado Pago não configurado na Netlify.'
     });
   }
 
   try {
-    // ---------------------------------------------------------
-    // 1. LER O BODY
-    // ---------------------------------------------------------
-
-    let rawBody = event.body || '{}';
-
-    if (event.isBase64Encoded) {
-      rawBody = Buffer.from(rawBody, 'base64').toString('utf8');
-    }
-
+    // Ler dados enviados pelo site
     let body;
 
     try {
-      body = JSON.parse(rawBody);
+      body = JSON.parse(event.body || '{}');
     } catch (error) {
-      console.error('Erro ao interpretar JSON:', error);
+      console.error('JSON inválido:', error);
 
       return response(400, {
-        error: 'O pedido enviado pelo site não está em formato JSON válido.'
+        error: 'Dados enviados pelo site são inválidos.'
       });
     }
 
     console.log('Body recebido:', body);
 
-    // ---------------------------------------------------------
-    // 2. VALIDAR PRODUTO
-    // ---------------------------------------------------------
-
     const productId = String(body.product_id || '').trim();
 
-    const requestedQuantity = Number(body.quantity || 1);
+    const quantityNumber = Number(body.quantity || 1);
 
-    const quantity = Number.isFinite(requestedQuantity)
-      ? Math.max(1, Math.min(10, Math.floor(requestedQuantity)))
+    const quantity = Number.isFinite(quantityNumber)
+      ? Math.max(1, Math.min(10, Math.floor(quantityNumber)))
       : 1;
 
     if (!productId) {
@@ -106,20 +63,7 @@ exports.handler = async (event) => {
       });
     }
 
-    // ---------------------------------------------------------
-    // 3. CARREGAR CATÁLOGO
-    // ---------------------------------------------------------
-
-    const catalog = getCatalog();
-
-    if (!catalog || !Array.isArray(catalog.products)) {
-      console.error('Catálogo inválido:', catalog);
-
-      return response(500, {
-        error: 'O catálogo de produtos está inválido.'
-      });
-    }
-
+    // Procurar produto no catálogo
     const product = catalog.products.find(
       (item) =>
         item.id === productId &&
@@ -128,7 +72,7 @@ exports.handler = async (event) => {
     );
 
     if (!product) {
-      console.error('Produto não encontrado ou indisponível:', productId);
+      console.error('Produto não encontrado:', productId);
 
       return response(400, {
         error: 'Produto inválido ou indisponível.'
@@ -138,22 +82,15 @@ exports.handler = async (event) => {
     const unitPrice = Number(product.price_cents) / 100;
 
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-      console.error('Preço inválido:', product);
-
       return response(400, {
-        error: 'O preço do produto é inválido.'
+        error: 'Preço do produto inválido.'
       });
     }
 
-    // ---------------------------------------------------------
-    // 4. MONTAR URL DO SITE
-    // ---------------------------------------------------------
-
+    // Identificar endereço da loja
     const host = event.headers?.host;
 
     if (!host) {
-      console.error('Host não encontrado:', event.headers);
-
       return response(500, {
         error: 'Não foi possível identificar o endereço da loja.'
       });
@@ -166,10 +103,7 @@ exports.handler = async (event) => {
 
     const baseUrl = `${protocol}://${host}`;
 
-    // ---------------------------------------------------------
-    // 5. CRIAR PREFERÊNCIA DO MERCADO PAGO
-    // ---------------------------------------------------------
-
+    // Criar preferência
     const preference = {
       items: [
         {
@@ -201,16 +135,13 @@ exports.handler = async (event) => {
       };
     }
 
-    console.log('Enviando preferência ao Mercado Pago:', {
-      product_id: product.id,
+    console.log('Enviando para Mercado Pago:', {
+      product: product.id,
       quantity,
-      unit_price: unitPrice
+      price: unitPrice
     });
 
-    // ---------------------------------------------------------
-    // 6. CHAMAR API DO MERCADO PAGO
-    // ---------------------------------------------------------
-
+    // Chamada à API do Mercado Pago
     const mpResponse = await fetch(
       'https://api.mercadopago.com/checkout/preferences',
       {
@@ -225,13 +156,14 @@ exports.handler = async (event) => {
       }
     );
 
-    // Tenta interpretar a resposta
-    let mpData;
-
     const responseText = await mpResponse.text();
 
+    let mpData;
+
     try {
-      mpData = responseText ? JSON.parse(responseText) : {};
+      mpData = responseText
+        ? JSON.parse(responseText)
+        : {};
     } catch {
       mpData = {
         raw_response: responseText
@@ -240,48 +172,34 @@ exports.handler = async (event) => {
 
     console.log('Mercado Pago status:', mpResponse.status);
 
-    // ---------------------------------------------------------
-    // 7. TRATAR ERRO DO MERCADO PAGO
-    // ---------------------------------------------------------
-
+    // Erro retornado pelo Mercado Pago
     if (!mpResponse.ok) {
       console.error(
-        'ERRO DO MERCADO PAGO:',
+        'ERRO MERCADO PAGO:',
         mpResponse.status,
         mpData
       );
 
       return response(502, {
-        error: 'O Mercado Pago recusou a criação do checkout.',
-        mercado_pago_status: mpResponse.status,
+        error: 'O Mercado Pago recusou a criação do pagamento.',
+        status: mpResponse.status,
         detalhes:
           mpData?.message ||
           mpData?.error ||
-          mpData?.cause ||
-          'O Mercado Pago não informou detalhes.'
+          'Verifique o Access Token e os dados da preferência.'
       });
     }
 
-    // ---------------------------------------------------------
-    // 8. VALIDAR RETORNO
-    // ---------------------------------------------------------
-
+    // Verificar link de pagamento
     if (!mpData.init_point) {
-      console.error(
-        'Mercado Pago não retornou init_point:',
-        mpData
-      );
+      console.error('init_point não retornado:', mpData);
 
       return response(502, {
-        error: 'O Mercado Pago criou a preferência, mas não retornou o link de pagamento.'
+        error: 'O Mercado Pago não retornou o link de pagamento.'
       });
     }
 
-    console.log('Checkout criado com sucesso.');
-
-    // ---------------------------------------------------------
-    // 9. DEVOLVER LINK PARA O SITE
-    // ---------------------------------------------------------
+    console.log('CHECKOUT CRIADO COM SUCESSO');
 
     return response(200, {
       init_point: mpData.init_point,
@@ -289,15 +207,14 @@ exports.handler = async (event) => {
     });
 
   } catch (error) {
-    // ---------------------------------------------------------
-    // ERRO INESPERADO
-    // ---------------------------------------------------------
-
-    console.error('ERRO INTERNO CRIAR PAGAMENTO:', error);
+    console.error(
+      'ERRO INTERNO CRIAR PAGAMENTO:',
+      error
+    );
 
     return response(500, {
       error: 'Erro interno ao criar o pagamento.',
-      detalhes: error?.message || 'Erro desconhecido.'
+      detalhes: error?.message || String(error)
     });
   }
 };
