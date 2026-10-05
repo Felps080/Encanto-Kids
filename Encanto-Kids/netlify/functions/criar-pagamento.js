@@ -27,9 +27,15 @@ function getCatalog() {
       if (fs.existsSync(file)) {
         return JSON.parse(fs.readFileSync(file, 'utf8'));
       }
-    } catch (error) {
-      console.error('Erro lendo catálogo:', file, error);
-    }
+   } catch (error) {
+  console.error('ERRO INTERNO:', error);
+
+  return response(500, {
+    error: 'Erro interno ao criar o pagamento.',
+    detalhes: String(error?.message || error),
+    tipo: error?.name || 'UnknownError'
+  });
+}
   }
 
   throw new Error('Arquivo public/products.json não foi encontrado.');
