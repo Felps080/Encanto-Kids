@@ -7,23 +7,54 @@
   },
   "products": [
     {
-      "id": "drone-chabvrio",
-      "name": "Drone CHABVRIO — 4 hélices em material EPP",
-      "price_cents": 17290,
+      "id": "pista-dinossauros",
+      "name": "Pista de Carrinho com Dinossauros",
+      "active": true,
+      "variants": [
+        {
+          "id": "92-pecas",
+          "name": "92 peças",
+          "price_cents": 14490
+        },
+        {
+          "id": "217-pecas",
+          "name": "217 peças",
+          "price_cents": 22990
+        },
+        {
+          "id": "277-pecas",
+          "name": "277 peças",
+          "price_cents": 25790
+        }
+      ]
+    },
+    {
+      "id": "aviao-controle-remoto",
+      "name": "Avião de Controle Remoto",
+      "price_cents": 14890,
       "active": true
     },
     {
-      "id": "pista-dinossauros-217",
-      "name": "Pista de Carrinho com Dinossauros — 217 peças",
-      "price_cents": 16890,
-      "active": true
-    },
-    {
-      "id": "barraca-3em1",
-      "name": "Barraca 3 em 1 com Túnel e Piscina de Bolinhas",
-      "price_cents": null,
-      "variants": [],
-      "active": false
+      "id": "barraca-castelo",
+      "name": "Barraca Castelo",
+      "active": true,
+      "variants": [
+        {
+          "id": "castelo-rosa",
+          "name": "Castelo Rosa",
+          "price_cents": 23790
+        },
+        {
+          "id": "castelo-azul",
+          "name": "Castelo Azul",
+          "price_cents": 21590
+        },
+        {
+          "id": "colorida-simples",
+          "name": "Colorida Simples",
+          "price_cents": 19290
+        }
+      ]
     }
   ]
 }
