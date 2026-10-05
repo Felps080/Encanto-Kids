@@ -7,7 +7,7 @@
 #   netlify/functions/       <- back-end (criar-pagamento, webhook)
 
 [build]
-  publish = "."
+  publish = "public"
   functions = "netlify/functions"
 
 [functions]
