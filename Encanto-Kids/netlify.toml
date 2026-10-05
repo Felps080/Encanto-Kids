@@ -7,20 +7,18 @@
 #   netlify/functions/       <- back-end (criar-pagamento, webhook)
 
 [build]
-  # Só a pasta "public" vai ao ar. O código das functions nunca fica exposto.
   publish = "."
   functions = "netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
-  # Permite que as functions leiam o catálogo e validem preços no servidor
-  included_files = ["public/products.json"]
 
-# URLs amigáveis: /api/criar-pagamento -> /.netlify/functions/criar-pagamento
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
+
+# URLs amigáveis: /api/criar-pagamento -> /.netlify/functions/criar-pagamento
 
 # Cabeçalhos de segurança básicos
 [[headers]]
